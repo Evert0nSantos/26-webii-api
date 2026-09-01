@@ -21,3 +21,5 @@ async function shutdown(signal) {
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+console.log("Servidor iniciado e aguardando requisições...");
