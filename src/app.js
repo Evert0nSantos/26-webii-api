@@ -121,4 +121,11 @@ app.get("/questions", async (req, res) => {
   }
 });
 
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Rota " + req.method + " " + req.originalUrl + " não encontrada",
+  });
+});
+
 export default app;
