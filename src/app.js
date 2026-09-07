@@ -1,6 +1,9 @@
 //src/app.js
 import express from "express";
 import prisma from "./config/database.js";
+import userRoutes from "./routes/userRoutes.js";
+import subjectRoutes from "./routes/subjectRoutes.js";
+import questionRoutes from "./routes/questionRoutes.js";
 
 const app = express();
 
@@ -33,93 +36,10 @@ app.get("/health", async (req, res) => {
   }
 });
 
-app.get("/users", async (req, res) => {
-  try {
-    const usuarios = await prisma.user.findMany({
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        papel: true,
-        foto: true,
-        createdAt: true,
-      },
-      orderBy: { id: "asc" },
-    });
+app.use("/users", userRoutes);
 
-    res.status(200).json({
-      success: true,
-      data: usuarios,
-      total: usuarios.length,
-    });
-  } catch (error) {
-    console.error("Erro ao buscar usuários:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Erro ao buscar usuários",
-    });
-  }
-});
-
-app.get("/subjects", async (req, res) => {
-  try {
-    const materias = await prisma.subject.findMany({
-      include: {
-        professor: {
-          select: {
-            id: true,
-            nome: true,
-          },
-        },
-      },
-      orderBy: { id: "asc" },
-    });
-
-    res.status(200).json({
-      success: true,
-      data: materias,
-      total: materias.length,
-    });
-  } catch (error) {
-    console.error("Erro ao buscar matérias:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Erro ao buscar matérias",
-    });
-  }
-});
-
-app.get("/questions", async (req, res) => {
-  try {
-    const questoes = await prisma.question.findMany({
-      include: {
-        subject: true,
-        author: {
-          select: {
-            id: true,
-            nome: true,
-          },
-        },
-      },
-      orderBy: { id: "asc" },
-    });
-
-    res.status(200).json({
-      success: true,
-      data: questoes,
-      total: questoes.length,
-    });
-  } catch (error) {
-    console.error("Erro ao buscar questões:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Erro ao buscar questões",
-    });
-  }
-});
+app.use("/subjects", subjectRoutes);
+app.use("/questions", questionRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
