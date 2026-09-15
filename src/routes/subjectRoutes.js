@@ -1,21 +1,12 @@
-// src/routes/subjectRoutes.js
-import express from "express";
+import { Router } from "express";
 import * as subjectController from "../controllers/subjectController.js";
 
-const router = express.Router();
+const router = Router();
 
-/**
- * Rotas de Matérias
- * Base URL: /subjects
- */
-
-// CREATE - Criar nova matéria
 router.post("/", subjectController.create);
-
-// READ - Listar todas as matérias
 router.get("/", subjectController.getAll);
-
-// READ - Buscar matéria por ID
 router.get("/:id", subjectController.getById);
+router.patch("/:id", subjectController.update);
+router.delete("/:id", subjectController.remove);
 
 export default router;

@@ -1,141 +1,70 @@
-// src/controllers/questionController.js
-import prisma from "../config/database.js";
+import * as questionService from "../services/questionService.js";
 
-/**
- * Controller de Questões
- * Responsável por gerenciar as operações de criação e leitura de questões.
- */
+function toPositiveInt(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
 
-// CREATE - Criar uma questão
 export const create = async (req, res) => {
   try {
     const {
       enunciado,
       dificuldade,
       respostaCorreta,
+      ativa,
       subjectId,
       authorId,
-      ativa,
     } = req.body;
 
-    // Validação dos campos obrigatórios
+    const subjectIdNumber = toPositiveInt(subjectId);
+    const authorIdNumber = toPositiveInt(authorId);
+
     if (
-      !enunciado ||
-      dificuldade === undefined ||
-      subjectId === undefined ||
-      authorId === undefined
+      typeof enunciado !== "string" ||
+      !enunciado.trim() ||
+      !subjectIdNumber ||
+      !authorIdNumber ||
+      !Number.isInteger(dificuldade) ||
+      dificuldade < 1 ||
+      dificuldade > 3 ||
+      (respostaCorreta !== undefined &&
+        respostaCorreta !== null &&
+        typeof respostaCorreta !== "string") ||
+      (ativa !== undefined && typeof ativa !== "boolean")
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Enunciado, dificuldade, subjectId e authorId são obrigatórios",
+        message: "Dados inválidos",
       });
     }
 
-    // Converte os IDs e dificuldade para número
-    const dificuldadeNumerica = Number(dificuldade);
-    const subjectIdNumerico = Number(subjectId);
-    const authorIdNumerico = Number(authorId);
-
-    // Valida dificuldade
-    if (
-      !Number.isInteger(dificuldadeNumerica) ||
-      ![1, 2, 3].includes(dificuldadeNumerica)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Dificuldade inválida. Deve ser 1, 2 ou 3",
-      });
-    }
-
-    // Valida subjectId
-    if (
-      !Number.isInteger(subjectIdNumerico) ||
-      subjectIdNumerico <= 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "subjectId inválido. Deve ser um número inteiro positivo",
-      });
-    }
-
-    // Valida authorId
-    if (
-      !Number.isInteger(authorIdNumerico) ||
-      authorIdNumerico <= 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "authorId inválido. Deve ser um número inteiro positivo",
-      });
-    }
-
-    // Verifica se a matéria existe
-    const materia = await prisma.subject.findUnique({
-      where: { id: subjectIdNumerico },
+    const result = await questionService.createQuestion({
+      enunciado,
+      dificuldade,
+      respostaCorreta,
+      ativa,
+      subjectId: subjectIdNumber,
+      authorId: authorIdNumber,
     });
 
-    if (!materia) {
+    if (!result.ok && result.reason === "SUBJECT_NOT_FOUND") {
       return res.status(404).json({
         success: false,
-        message: `Matéria com ID ${subjectIdNumerico} não encontrada`,
+        message: `Matéria com ID ${subjectIdNumber} não encontrada`,
       });
     }
 
-    // Verifica se o autor existe
-    const autor = await prisma.user.findUnique({
-      where: { id: authorIdNumerico },
-    });
-
-    if (!autor) {
+    if (!result.ok && result.reason === "AUTHOR_NOT_FOUND") {
       return res.status(404).json({
         success: false,
-        message: `Autor com ID ${authorIdNumerico} não encontrado`,
+        message: `Autor com ID ${authorIdNumber} não encontrado`,
       });
     }
-
-    // Cria a questão
-    const novaQuestao = await prisma.question.create({
-      data: {
-        enunciado,
-        dificuldade: dificuldadeNumerica,
-        respostaCorreta: respostaCorreta || null,
-        subjectId: subjectIdNumerico,
-        authorId: authorIdNumerico,
-        ativa: ativa !== undefined ? ativa : true,
-      },
-      select: {
-        id: true,
-        enunciado: true,
-        dificuldade: true,
-        respostaCorreta: true,
-        subjectId: true,
-        authorId: true,
-        ativa: true,
-        createdAt: true,
-        updatedAt: true,
-        subject: {
-          select: {
-            id: true,
-            nome: true,
-            ativa: true,
-          },
-        },
-        author: {
-          select: {
-            id: true,
-            nome: true,
-          },
-        },
-      },
-    });
 
     return res.status(201).json({
       success: true,
       message: "Questão criada com sucesso",
-      data: novaQuestao,
+      data: result.data,
     });
   } catch (error) {
     console.error("Erro ao criar questão:", error);
@@ -147,38 +76,9 @@ export const create = async (req, res) => {
   }
 };
 
-// READ - Listar todas as questões
-export const getAll = async (req, res) => {
+export const getAll = async (_req, res) => {
   try {
-    const questoes = await prisma.question.findMany({
-      select: {
-        id: true,
-        enunciado: true,
-        dificuldade: true,
-        respostaCorreta: true,
-        subjectId: true,
-        authorId: true,
-        ativa: true,
-        createdAt: true,
-        updatedAt: true,
-        subject: {
-          select: {
-            id: true,
-            nome: true,
-            ativa: true,
-          },
-        },
-        author: {
-          select: {
-            id: true,
-            nome: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const questoes = await questionService.getAllQuestions();
 
     return res.status(200).json({
       success: true,
@@ -195,51 +95,19 @@ export const getAll = async (req, res) => {
   }
 };
 
-// READ - Buscar questão por ID
 export const getById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const questionId = toPositiveInt(req.params.id);
 
-    const questionId = Number(id);
-
-    // Validação do ID
-    if (!Number.isInteger(questionId) || questionId <= 0) {
+    if (!questionId) {
       return res.status(400).json({
         success: false,
-        message: "ID inválido. Deve ser um número",
+        message: "ID inválido. Deve ser um número inteiro positivo",
       });
     }
 
-    // Busca a questão
-    const questao = await prisma.question.findUnique({
-      where: { id: questionId },
-      select: {
-        id: true,
-        enunciado: true,
-        dificuldade: true,
-        respostaCorreta: true,
-        subjectId: true,
-        authorId: true,
-        ativa: true,
-        createdAt: true,
-        updatedAt: true,
-        subject: {
-          select: {
-            id: true,
-            nome: true,
-            ativa: true,
-          },
-        },
-        author: {
-          select: {
-            id: true,
-            nome: true,
-          },
-        },
-      },
-    });
+    const questao = await questionService.getQuestionById(questionId);
 
-    // Questão não encontrada
     if (!questao) {
       return res.status(404).json({
         success: false,
@@ -257,6 +125,195 @@ export const getById = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Erro ao buscar questão",
+    });
+  }
+};
+
+export const update = async (req, res) => {
+  try {
+    const questionId = toPositiveInt(req.params.id);
+
+    if (!questionId) {
+      return res.status(400).json({
+        success: false,
+        message: "ID inválido. Deve ser um número inteiro positivo",
+      });
+    }
+
+    const {
+      enunciado,
+      dificuldade,
+      respostaCorreta,
+      ativa,
+      subjectId,
+      authorId,
+    } = req.body;
+
+    const allowedFields = [
+      "enunciado",
+      "dificuldade",
+      "respostaCorreta",
+      "ativa",
+      "subjectId",
+      "authorId",
+    ];
+
+    const hasAllowedField = allowedFields.some((field) =>
+      Object.hasOwn(req.body, field),
+    );
+
+    if (!hasAllowedField) {
+      return res.status(400).json({
+        success: false,
+        message: "Informe ao menos um campo válido para atualização",
+      });
+    }
+
+    if (
+      Object.hasOwn(req.body, "enunciado") &&
+      (typeof enunciado !== "string" || !enunciado.trim())
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Enunciado inválido",
+      });
+    }
+
+    if (
+      Object.hasOwn(req.body, "dificuldade") &&
+      (!Number.isInteger(dificuldade) || dificuldade < 1 || dificuldade > 3)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Dificuldade deve ser um número inteiro entre 1 e 3",
+      });
+    }
+
+    if (
+      Object.hasOwn(req.body, "respostaCorreta") &&
+      respostaCorreta !== null &&
+      typeof respostaCorreta !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "respostaCorreta deve ser texto ou nulo",
+      });
+    }
+
+    if (Object.hasOwn(req.body, "ativa") && typeof ativa !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "Ativa deve ser booleana",
+      });
+    }
+
+    let subjectIdNumber;
+    let authorIdNumber;
+
+    if (Object.hasOwn(req.body, "subjectId")) {
+      subjectIdNumber = toPositiveInt(subjectId);
+
+      if (!subjectIdNumber) {
+        return res.status(400).json({
+          success: false,
+          message: "subjectId deve ser um número inteiro positivo",
+        });
+      }
+    }
+
+    if (Object.hasOwn(req.body, "authorId")) {
+      authorIdNumber = toPositiveInt(authorId);
+
+      if (!authorIdNumber) {
+        return res.status(400).json({
+          success: false,
+          message: "authorId deve ser um número inteiro positivo",
+        });
+      }
+    }
+
+    const result = await questionService.updateQuestion(questionId, {
+      ...(Object.hasOwn(req.body, "enunciado") && { enunciado }),
+      ...(Object.hasOwn(req.body, "dificuldade") && { dificuldade }),
+      ...(Object.hasOwn(req.body, "respostaCorreta") && {
+        respostaCorreta,
+      }),
+      ...(Object.hasOwn(req.body, "ativa") && { ativa }),
+      ...(Object.hasOwn(req.body, "subjectId") && {
+        subjectId: subjectIdNumber,
+      }),
+      ...(Object.hasOwn(req.body, "authorId") && {
+        authorId: authorIdNumber,
+      }),
+    });
+
+    if (!result.ok && result.reason === "NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: `Questão com ID ${questionId} não encontrada`,
+      });
+    }
+
+    if (!result.ok && result.reason === "SUBJECT_NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: `Matéria com ID ${subjectIdNumber} não encontrada`,
+      });
+    }
+
+    if (!result.ok && result.reason === "AUTHOR_NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: `Autor com ID ${authorIdNumber} não encontrado`,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Questão atualizada com sucesso",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar questão:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Erro ao atualizar questão",
+    });
+  }
+};
+
+export const remove = async (req, res) => {
+  try {
+    const questionId = toPositiveInt(req.params.id);
+
+    if (!questionId) {
+      return res.status(400).json({
+        success: false,
+        message: "ID inválido. Deve ser um número inteiro positivo",
+      });
+    }
+
+    const result = await questionService.deleteQuestion(questionId);
+
+    if (!result.ok && result.reason === "NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: `Questão com ID ${questionId} não encontrada`,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Questão excluída com sucesso",
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("Erro ao excluir questão:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Erro ao excluir questão",
     });
   }
 };
