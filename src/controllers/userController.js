@@ -1,10 +1,14 @@
 // src/controllers/userController.js
 import prisma from "../config/database.js";
 
-/**
- * Controller de Usuários (Professores e Admins)
- * Responsável por gerenciar as operações CRUD de usuários
- */
+const publicUserSelect = {
+  id: true,
+  nome: true,
+  email: true,
+  papel: true,
+  foto: true,
+  createdAt: true,
+};
 
 export const create = async (req, res) => {
   try {
@@ -17,7 +21,6 @@ export const create = async (req, res) => {
       });
     }
 
-    // Verifica se email já existe
     const emailExistente = await prisma.user.findUnique({
       where: { email },
     });
@@ -29,7 +32,6 @@ export const create = async (req, res) => {
       });
     }
 
-    // Cria o usuário no banco
     const novoUsuario = await prisma.user.create({
       data: {
         nome,
@@ -37,14 +39,7 @@ export const create = async (req, res) => {
         papel: papel || "PROFESSOR",
         foto: foto || null,
       },
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        papel: true,
-        foto: true,
-        createdAt: true,
-      },
+      select: publicUserSelect,
     });
 
     res.status(201).json({
@@ -72,14 +67,7 @@ export const create = async (req, res) => {
 export const getAll = async (req, res) => {
   try {
     const usuarios = await prisma.user.findMany({
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        papel: true,
-        foto: true,
-        createdAt: true,
-      },
+      select: publicUserSelect,
       orderBy: {
         createdAt: "desc",
       },
@@ -102,12 +90,8 @@ export const getAll = async (req, res) => {
 
 export const getById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const userId = Number(req.params.id);
 
-    // Converte string para número
-    const userId = Number(id);
-
-    // Validação básica
     if (!Number.isInteger(userId) || userId <= 0) {
       return res.status(400).json({
         success: false,
@@ -117,14 +101,7 @@ export const getById = async (req, res) => {
 
     const usuario = await prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        papel: true,
-        foto: true,
-        createdAt: true,
-      },
+      select: publicUserSelect,
     });
 
     if (!usuario) {
@@ -144,6 +121,190 @@ export const getById = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Erro ao buscar usuário",
+    });
+  }
+};
+
+export const update = async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ID inválido. Deve ser um número",
+      });
+    }
+
+    const { nome, email, papel, foto } = req.body;
+
+    if (
+      nome === undefined &&
+      email === undefined &&
+      papel === undefined &&
+      foto === undefined
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Informe pelo menos um campo para atualizar",
+      });
+    }
+
+    const usuarioExistente = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!usuarioExistente) {
+      return res.status(404).json({
+        success: false,
+        message: `Usuário com ID ${userId} não encontrado`,
+      });
+    }
+
+    if (email !== undefined) {
+      const emailExistente = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (emailExistente && emailExistente.id !== userId) {
+        return res.status(409).json({
+          success: false,
+          message: "Email já cadastrado no sistema",
+        });
+      }
+    }
+
+    const data = {};
+
+    if (nome !== undefined) {
+      if (typeof nome !== "string" || nome.trim() === "") {
+        return res.status(400).json({
+          success: false,
+          message: "Nome inválido",
+        });
+      }
+
+      data.nome = nome.trim();
+    }
+
+    if (email !== undefined) {
+      if (typeof email !== "string" || email.trim() === "") {
+        return res.status(400).json({
+          success: false,
+          message: "Email inválido",
+        });
+      }
+
+      data.email = email.trim();
+    }
+
+    if (papel !== undefined) {
+      if (papel !== "PROFESSOR" && papel !== "ADMIN") {
+        return res.status(400).json({
+          success: false,
+          message: "Papel inválido",
+        });
+      }
+
+      data.papel = papel;
+    }
+
+    if (foto !== undefined) {
+      data.foto = foto;
+    }
+
+    const usuarioAtualizado = await prisma.user.update({
+      where: { id: userId },
+      data,
+      select: publicUserSelect,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Usuário atualizado com sucesso",
+      data: usuarioAtualizado,
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar usuário:", error);
+
+    if (error.code === "P2002") {
+      return res.status(409).json({
+        success: false,
+        message: "Email já cadastrado no sistema",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Erro ao atualizar usuário",
+    });
+  }
+};
+
+export const remove = async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ID inválido. Deve ser um número",
+      });
+    }
+
+    const usuarioExistente = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        _count: {
+          select: {
+            subjects: true,
+            questions: true,
+          },
+        },
+      },
+    });
+
+    if (!usuarioExistente) {
+      return res.status(404).json({
+        success: false,
+        message: `Usuário com ID ${userId} não encontrado`,
+      });
+    }
+
+    if (
+      usuarioExistente._count.subjects > 0 ||
+      usuarioExistente._count.questions > 0
+    ) {
+      return res.status(409).json({
+        success: false,
+        message: "Usuário possui matérias ou questões vinculadas",
+      });
+    }
+
+    const usuarioRemovido = await prisma.user.delete({
+      where: { id: userId },
+      select: publicUserSelect,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Usuário excluído com sucesso",
+      data: usuarioRemovido,
+    });
+  } catch (error) {
+    console.error("Erro ao excluir usuário:", error);
+
+    if (error.code === "P2003" || error.code === "P2014") {
+      return res.status(409).json({
+        success: false,
+        message: "Usuário possui matérias ou questões vinculadas",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Erro ao excluir usuário",
     });
   }
 };
