@@ -1,4 +1,5 @@
 import prisma from "../config/database.js";
+import { NotFoundError } from "../errors/AppError.js";
 
 const publicUserSelect = {
   id: true,
@@ -26,7 +27,7 @@ const publicQuestionSelect = {
   author: { select: publicUserSelect },
 };
 
-async function relatedRecordsExist({ subjectId, authorId }) {
+async function ensureRelatedRecordsExist({ subjectId, authorId }) {
   if (subjectId !== undefined) {
     const subject = await prisma.subject.findUnique({
       where: { id: subjectId },
@@ -34,7 +35,7 @@ async function relatedRecordsExist({ subjectId, authorId }) {
     });
 
     if (!subject) {
-      return { ok: false, reason: "SUBJECT_NOT_FOUND" };
+      throw new NotFoundError("Disciplina não encontrada");
     }
   }
 
@@ -45,11 +46,9 @@ async function relatedRecordsExist({ subjectId, authorId }) {
     });
 
     if (!author) {
-      return { ok: false, reason: "AUTHOR_NOT_FOUND" };
+      throw new NotFoundError("Autor não encontrado");
     }
   }
-
-  return { ok: true };
 }
 
 export const getAllQuestions = async () => {
@@ -60,20 +59,22 @@ export const getAllQuestions = async () => {
 };
 
 export const getQuestionById = async (questionId) => {
-  return prisma.question.findUnique({
+  const question = await prisma.question.findUnique({
     where: { id: questionId },
     select: publicQuestionSelect,
   });
+
+  if (!question) {
+    throw new NotFoundError("Questão não encontrada");
+  }
+
+  return question;
 };
 
 export const createQuestion = async (questionData) => {
-  const relations = await relatedRecordsExist(questionData);
+  await ensureRelatedRecordsExist(questionData);
 
-  if (!relations.ok) {
-    return relations;
-  }
-
-  const question = await prisma.question.create({
+  return prisma.question.create({
     data: {
       enunciado: questionData.enunciado.trim(),
       dificuldade: questionData.dificuldade,
@@ -84,8 +85,6 @@ export const createQuestion = async (questionData) => {
     },
     select: publicQuestionSelect,
   });
-
-  return { ok: true, data: question };
 };
 
 export const updateQuestion = async (questionId, questionData) => {
@@ -95,14 +94,10 @@ export const updateQuestion = async (questionId, questionData) => {
   });
 
   if (!questionExists) {
-    return { ok: false, reason: "NOT_FOUND" };
+    throw new NotFoundError("Questão não encontrada");
   }
 
-  const relations = await relatedRecordsExist(questionData);
-
-  if (!relations.ok) {
-    return relations;
-  }
+  await ensureRelatedRecordsExist(questionData);
 
   const data = {};
 
@@ -130,13 +125,19 @@ export const updateQuestion = async (questionId, questionData) => {
     data.ativa = questionData.ativa;
   }
 
-  const question = await prisma.question.update({
-    where: { id: questionId },
-    data,
-    select: publicQuestionSelect,
-  });
+  try {
+    return await prisma.question.update({
+      where: { id: questionId },
+      data,
+      select: publicQuestionSelect,
+    });
+  } catch (error) {
+    if (error.code === "P2025") {
+      throw new NotFoundError("Questão não encontrada");
+    }
 
-  return { ok: true, data: question };
+    throw error;
+  }
 };
 
 export const deleteQuestion = async (questionId) => {
@@ -146,19 +147,17 @@ export const deleteQuestion = async (questionId) => {
   });
 
   if (!questionExists) {
-    return { ok: false, reason: "NOT_FOUND" };
+    throw new NotFoundError("Questão não encontrada");
   }
 
   try {
-    const question = await prisma.question.delete({
+    return await prisma.question.delete({
       where: { id: questionId },
       select: publicQuestionSelect,
     });
-
-    return { ok: true, data: question };
   } catch (error) {
     if (error.code === "P2025") {
-      return { ok: false, reason: "NOT_FOUND" };
+      throw new NotFoundError("Questão não encontrada");
     }
 
     throw error;

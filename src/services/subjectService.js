@@ -1,4 +1,5 @@
 import prisma from "../config/database.js";
+import { ConflictError, NotFoundError } from "../errors/AppError.js";
 
 const publicUserSelect = {
   id: true,
@@ -25,10 +26,16 @@ export const getAllSubjects = async () => {
 };
 
 export const getSubjectById = async (subjectId) => {
-  return prisma.subject.findUnique({
+  const subject = await prisma.subject.findUnique({
     where: { id: subjectId },
     select: publicSubjectSelect,
   });
+
+  if (!subject) {
+    throw new NotFoundError("Disciplina não encontrada");
+  }
+
+  return subject;
 };
 
 export const createSubject = async (subjectData) => {
@@ -38,10 +45,10 @@ export const createSubject = async (subjectData) => {
   });
 
   if (!professor) {
-    return { ok: false, reason: "PROFESSOR_NOT_FOUND" };
+    throw new NotFoundError("Professor não encontrado");
   }
 
-  const subject = await prisma.subject.create({
+  return prisma.subject.create({
     data: {
       nome: subjectData.nome.trim(),
       professorId: subjectData.professorId,
@@ -49,8 +56,6 @@ export const createSubject = async (subjectData) => {
     },
     select: publicSubjectSelect,
   });
-
-  return { ok: true, data: subject };
 };
 
 export const updateSubject = async (subjectId, subjectData) => {
@@ -60,7 +65,7 @@ export const updateSubject = async (subjectId, subjectData) => {
   });
 
   if (!subjectExists) {
-    return { ok: false, reason: "NOT_FOUND" };
+    throw new NotFoundError("Disciplina não encontrada");
   }
 
   if (Object.hasOwn(subjectData, "professorId")) {
@@ -70,7 +75,7 @@ export const updateSubject = async (subjectId, subjectData) => {
     });
 
     if (!professor) {
-      return { ok: false, reason: "PROFESSOR_NOT_FOUND" };
+      throw new NotFoundError("Professor não encontrado");
     }
   }
 
@@ -88,13 +93,19 @@ export const updateSubject = async (subjectId, subjectData) => {
     data.professorId = subjectData.professorId;
   }
 
-  const subject = await prisma.subject.update({
-    where: { id: subjectId },
-    data,
-    select: publicSubjectSelect,
-  });
+  try {
+    return await prisma.subject.update({
+      where: { id: subjectId },
+      data,
+      select: publicSubjectSelect,
+    });
+  } catch (error) {
+    if (error.code === "P2025") {
+      throw new NotFoundError("Disciplina não encontrada");
+    }
 
-  return { ok: true, data: subject };
+    throw error;
+  }
 };
 
 export const deleteSubject = async (subjectId) => {
@@ -107,27 +118,29 @@ export const deleteSubject = async (subjectId) => {
   });
 
   if (!subjectExists) {
-    return { ok: false, reason: "NOT_FOUND" };
+    throw new NotFoundError("Disciplina não encontrada");
   }
 
   if (subjectExists._count.questions > 0) {
-    return { ok: false, reason: "SUBJECT_IN_USE" };
+    throw new ConflictError(
+      "Não é possível excluir a disciplina porque existem questões vinculadas",
+    );
   }
 
   try {
-    const subject = await prisma.subject.delete({
+    return await prisma.subject.delete({
       where: { id: subjectId },
       select: publicSubjectSelect,
     });
-
-    return { ok: true, data: subject };
   } catch (error) {
     if (error.code === "P2003" || error.code === "P2014") {
-      return { ok: false, reason: "SUBJECT_IN_USE" };
+      throw new ConflictError(
+        "Não é possível excluir a disciplina porque existem registros vinculados",
+      );
     }
 
     if (error.code === "P2025") {
-      return { ok: false, reason: "NOT_FOUND" };
+      throw new NotFoundError("Disciplina não encontrada");
     }
 
     throw error;
