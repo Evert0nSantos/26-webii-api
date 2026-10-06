@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { positiveIdSchema } from "./idSchema.js";
+
+import { positiveIdSchema } from "../../../schemas/idSchema.js";
 
 const papelSchema = z.enum(["PROFESSOR", "ADMIN"], {
   message: "Papel deve ser PROFESSOR ou ADMIN",
@@ -11,6 +12,7 @@ const fotoSchema = z.union([
 ]);
 
 /** Schema para POST /users. */
+
 export const createUserSchema = z
   .object({
     nome: z
@@ -25,6 +27,7 @@ export const createUserSchema = z
   .strict();
 
 /** Schema para PATCH /users/:id. */
+
 export const updateUserSchema = z
   .object({
     nome: z
@@ -43,6 +46,7 @@ export const updateUserSchema = z
   });
 
 /** Schema para parâmetros :id positivos. */
+
 export const idParamSchema = z.object({
   id: positiveIdSchema,
 });
